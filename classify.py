@@ -6,11 +6,13 @@ import json
 from typing import List
 
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch import nn
 import torchtext as tt
+from eda import run_eda
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -43,8 +45,9 @@ def load_data(path: str) -> List:
 
 # Step #1: Analyse data
 def analyse_data(data: list) -> None:
-    """Analyse data files"""
-    return None
+    """Analyse data files.
+    See accompanying jupyter notebook "eda.ipynb"""
+    run_eda(pd.DataFrame(data))
 
 
 # Step #2: Define data fields
