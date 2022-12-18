@@ -1,9 +1,18 @@
 # NOTE: This is only a starter template. Wherever additional changes are required, please feel free modify/update.
 
+# Changes:
+# Add Exploratory data analysis routines, see attached notebook "eda.ipynb"
+# Fix type annotations, replace with classes from typing module. Fix incorrect annotations.
+# Fix return value of data_fields which was causing the vocabulary not to be built. build_vocab checks that the field
+# is the same as in https://github.com/pytorch/text/blob/0.6.0/torchtext/data/field.py#L293  This check was failing and the vocabulary
+# only had the 4 special tokens.
+
+
+
 import pickle
 import string
 import json
-from typing import List
+from typing import List, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -12,6 +21,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch import nn
 import torchtext as tt
+from torchtext.data import Field
+
 from eda import run_eda
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -47,30 +58,31 @@ def load_data(path: str) -> List:
 def analyse_data(data: list) -> None:
     """Analyse data files.
     See accompanying jupyter notebook "eda.ipynb"""
-    run_eda(pd.DataFrame(data))
+    #run_eda(pd.DataFrame(data))
+    return None
 
 
 # Step #2: Define data fields
-def data_fields() -> dict:
+def data_fields() -> Tuple:
     # Type of fields on Data
-    TEXTFIELD = tt.data.Field(sequential=True,
+    TEXTFIELD: Field = tt.data.Field(sequential=True,
                                      init_token='<sos>',
                                      eos_token='<eos>',
                                      lower=True,
                                      tokenize=tt.data.utils.get_tokenizer("basic_english"), )
-    LABELFIELD = tt.data.Field(sequential=False,
+    LABELFIELD: Field = tt.data.Field(sequential=False,
                                       use_vocab=False,
                                       unk_token=None,
                                       is_target=True)
 
-    fields = {'Subject': ('subject', TEXTFIELD), 'Body': ('body', TEXTFIELD),
-              'Date': ('date', TEXTFIELD), 'Label': ('label', LABELFIELD)}
+    fields = {'Subject': TEXTFIELD, 'Body': TEXTFIELD,
+              'Date': TEXTFIELD, 'Label': LABELFIELD}
 
     return fields, TEXTFIELD, LABELFIELD
 
 
 # Step #2: Clean data
-def data_clean(data: list, fields: dict) -> list:
+def data_clean(data: List, fields: Dict) -> List:
     """A data cleaning routine."""
 
     clean_data = []
@@ -85,7 +97,7 @@ def data_clean(data: list, fields: dict) -> list:
 
 
 # Step #2: Prepare data
-def data_prepare(data: list, fields: dict, val_percent: int) -> list:
+def data_prepare(data: list, fields: dict, val_percent: int) -> List:
     """A data preparation routine."""
 
     clean_train, clean_val = tt.data.Dataset(data, fields).split(split_ratio=val_percent)
@@ -94,8 +106,9 @@ def data_prepare(data: list, fields: dict, val_percent: int) -> list:
 
 
 # Step #3: Extract features
-def extract_features(X_train: list, X_valid: list, TEXTFIELD: tt.data.Field,
-                     LABELFIELD: tt.data.Field) -> list:
+def extract_features(X_train: List, X_valid: List, TEXTFIELD: tt.data.Field,
+                     LABELFIELD: tt.data.Field) -> List:
+    # TODO: Batch using subject + body
     train_iter, val_iter = [], []
     if X_train:
         TEXTFIELD.build_vocab(X_train)
@@ -141,10 +154,13 @@ def main(train_path: str, test_path: str) -> None:
     ### Step #2: Clean and prepare data
     fields, TEXTFIELD, LABELFIELD = data_fields()
     train_data = data_clean(train_data, fields)
+
+    # In the EDA step we have seen that the dataset is not balanced, also 50% train / validation split seems quite big
     train_ds, val_ds = data_prepare(train_data, fields, val_percent=0.5)
 
     ### Step #3: Extract features
     train_iter, val_iter, TEXTFIELD, LABELFIELD = extract_features(train_ds, val_ds, TEXTFIELD, LABELFIELD)
+    # TODO: vocab size seems wrong
     vocab_size = len(TEXTFIELD.vocab.stoi)
 
     ### Step #4: Train model
