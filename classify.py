@@ -3,9 +3,25 @@
 # Changes:
 # Add Exploratory data analysis routines, see attached notebook "eda.ipynb"
 # Fix type annotations, replace with classes from typing module. Fix incorrect annotations.
-# Fix return value of data_fields which was causing the vocabulary not to be built. build_vocab checks that the field
-# is the same as in https://github.com/pytorch/text/blob/0.6.0/torchtext/data/field.py#L293  This check was failing and the vocabulary
-# only had the 4 special tokens.
+# Workaround bug in torchtext
+# https://github.com/pytorch/text/blob/v0.8.1/torchtext/data/field.py#L291 while calling
+# build_vocab, it never builds a vocabulary because it checks that the value is the same field,
+# although the attribute fields contains a tuple, so the check is always false.
+#
+# X_train.fields
+# Out[2]:
+# {'Subject': ('Subject', <torchtext.data.field.Field at 0x7f37f52f1450>),
+#  'Body': ('Body', <torchtext.data.field.Field at 0x7f37f52f1450>),
+#  'Date': ('Date', <torchtext.data.field.Field at 0x7f37f52f1450>),
+#  'Label': ('Label', <torchtext.data.field.Field at 0x7f37f52f1510>)}
+#
+#                sources += [getattr(arg, name) for name, field in
+#                            arg.fields.items() if field is self]
+#
+# I added a workaround to remove the tuple and add only the field, so the vocabulary is propperly
+# built.
+#
+
 
 
 
@@ -75,8 +91,8 @@ def data_fields() -> Tuple:
                                       unk_token=None,
                                       is_target=True)
 
-    fields = {'Subject': TEXTFIELD, 'Body': TEXTFIELD,
-              'Date': TEXTFIELD, 'Label': LABELFIELD}
+    fields = {'Subject': ('Subject', TEXTFIELD), 'Body': ('Body', TEXTFIELD),
+              'Date': ('Date', TEXTFIELD), 'Label': ('Label', LABELFIELD)}
 
     return fields, TEXTFIELD, LABELFIELD
 
@@ -96,6 +112,12 @@ def data_clean(data: List, fields: Dict) -> List:
     return clean_data
 
 
+def fields_bug_workaround(fields: Dict) -> Dict:
+    res = {}
+    for k,v in fields.items():
+        res[k] = v[1]
+    return res
+
 # Step #2: Prepare data
 def data_prepare(data: list, fields: dict, val_percent: int) -> List:
     """A data preparation routine."""
@@ -111,12 +133,14 @@ def extract_features(X_train: List, X_valid: List, TEXTFIELD: tt.data.Field,
     # TODO: Batch using subject + body
     train_iter, val_iter = [], []
     if X_train:
+        X_train.fields = fields_bug_workaround(X_train.fields)
         TEXTFIELD.build_vocab(X_train)
         LABELFIELD.build_vocab(X_train)
         train_iter = tt.data.BucketIterator(X_train, batch_size=32, sort_key=lambda x: len(x.subject),
                                                    device=device, sort=True, sort_within_batch=True)
 
     if X_valid:
+        X_valid.fields = fields_bug_workaround(X_valid.fields)
         val_iter = tt.data.BucketIterator(X_valid, batch_size=32, sort_key=lambda x: len(x.subject),
                                                  device=device, sort=True, sort_within_batch=True)
 
@@ -160,7 +184,7 @@ def main(train_path: str, test_path: str) -> None:
 
     ### Step #3: Extract features
     train_iter, val_iter, TEXTFIELD, LABELFIELD = extract_features(train_ds, val_ds, TEXTFIELD, LABELFIELD)
-    # TODO: vocab size seems wrong
+    # Vocab size is not 5546 after the fix. Before it was 4 only special tokens, see comments in Changelog.
     vocab_size = len(TEXTFIELD.vocab.stoi)
 
     ### Step #4: Train model
